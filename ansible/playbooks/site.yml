@@ -1,0 +1,12 @@
+---
+# Main playbook that includes all others
+- name: Apply common configuration to all servers
+  hosts: all
+  roles:
+    - common
+
+- import_playbook: setup-kubernetes.yml
+- import_playbook: setup-databases.yml
+- import_playbook: setup-rabbitmq.yml
+- import_playbook: deploy-services.yml
+- import_playbook: configure-monitoring.yml

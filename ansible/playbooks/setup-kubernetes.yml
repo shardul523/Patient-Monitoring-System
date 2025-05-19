@@ -1,0 +1,102 @@
+---
+- name: Set up Kubernetes cluster
+  hosts: kubernetes
+  roles:
+    - kubernetes
+
+- name: Configure Kubernetes master nodes
+  hosts: kubernetes_master
+  tasks:
+    - name: Initialize Kubernetes cluster
+      command: kubeadm init --apiserver-advertise-address={{ kubernetes_apiserver_advertise_address }} --pod-network-cidr={{ kubernetes_pod_network_cidr }} --service-cidr={{ kubernetes_service_cidr }}
+      args:
+        creates: /etc/kubernetes/admin.conf
+      when: inventory_hostname == groups['kubernetes_master'][0]
+      register: kubeadm_init
+
+    - name: Get join command
+      command: kubeadm token create --print-join-command
+      register: join_command
+      when: inventory_hostname == groups['kubernetes_master'][0] and kubeadm_init.changed
+
+    - name: Set join command fact
+      set_fact:
+        kubernetes_join_command: "{{ join_command.stdout }}"
+      when: inventory_hostname == groups['kubernetes_master'][0] and join_command.changed
+
+    - name: Configure kubectl for root
+      shell: |
+        mkdir -p /root/.kube
+        cp -f /etc/kubernetes/admin.conf /root/.kube/config
+        chmod 600 /root/.kube/config
+      when: inventory_hostname == groups['kubernetes_master'][0]
+
+    - name: Configure kubectl for ansible user
+      shell: |
+        mkdir -p /home/{{ ansible_user }}/.kube
+        cp -f /etc/kubernetes/admin.conf /home/{{ ansible_user }}/.kube/config
+        chown -R {{ ansible_user }}:{{ ansible_user }} /home/{{ ansible_user }}/.kube
+        chmod 600 /home/{{ ansible_user }}/.kube/config
+      when: inventory_hostname == groups['kubernetes_master'][0]
+
+    - name: Install Calico CNI
+      shell: |
+        kubectl apply -f https://docs.projectcalico.org/v3.24/manifests/calico.yaml
+      args:
+        creates: /var/lib/calico
+      when: inventory_hostname == groups['kubernetes_master'][0]
+
+    - name: Install Kubernetes Dashboard
+      shell: |
+        kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.6.1/aio/deploy/recommended.yaml
+      args:
+        creates: /var/lib/kubernetes-dashboard
+      when: inventory_hostname == groups['kubernetes_master'][0]
+
+    - name: Create dashboard admin user
+      shell: |
+        kubectl apply -f /tmp/dashboard-admin.yaml
+      args:
+        creates: /var/lib/kubernetes-dashboard-admin
+      when: inventory_hostname == groups['kubernetes_master'][0]
+
+    - name: Copy kubectl config to bastion host
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: /tmp/kube-config
+        flat: yes
+      when: inventory_hostname == groups['kubernetes_master'][0]
+
+- name: Configure Kubernetes worker nodes
+  hosts: kubernetes_worker
+  tasks:
+    - name: Join Kubernetes cluster
+      command: "{{ hostvars[groups['kubernetes_master'][0]]['kubernetes_join_command'] }}"
+      args:
+        creates: /etc/kubernetes/kubelet.conf
+      when: hostvars[groups['kubernetes_master'][0]]['kubernetes_join_command'] is defined
+
+- name: Configure bastion host for Kubernetes access
+  hosts: bastion
+  tasks:
+    - name: Create kubectl config directory
+      file:
+        path: /home/{{ ansible_user }}/.kube
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0700'
+
+    - name: Copy kubectl config to bastion
+      copy:
+        src: /tmp/kube-config
+        dest: /home/{{ ansible_user }}/.kube/config
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+
+    - name: Install kubectl on bastion
+      apt:
+        name: kubectl={{ kubernetes_version }}
+        state: present
+        update_cache: yes

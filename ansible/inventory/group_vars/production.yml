@@ -1,0 +1,38 @@
+---
+# Production Environment Specific Variables
+k8s_node_memory: 32768
+k8s_node_cpus: 8
+
+# Database Configuration
+db_replication_enabled: true
+postgresql_max_connections: 500
+postgresql_shared_buffers: "8GB"
+postgresql_effective_cache_size: "24GB"
+timescaledb_max_connections: 300
+timescaledb_memory_limit: "16GB"
+
+# RabbitMQ Configuration
+rabbitmq_memory_limit: "8GB"
+rabbitmq_disk_free_limit: "10GB"
+rabbitmq_ha_mode: "all"
+
+# Service Replicas
+patient_service_replicas: 3
+vitals_ingestion_service_replicas: 5
+vitals_processing_service_replicas: 3
+alert_service_replicas: 3
+notification_service_replicas: 3
+api_gateway_replicas: 4
+
+# Storage Configuration
+storage_class: "production-ssd"
+
+# Monitoring Configuration
+prometheus_retention_time: "30d"
+prometheus_scrape_interval: "15s"
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+# Backup Configuration
+backup_enabled: true
+backup_retention_days: 30
+backup_time: "01:00"

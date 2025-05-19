@@ -1,0 +1,88 @@
+---
+- name: Configure PostgreSQL database servers
+  hosts: database
+  roles:
+    - postgresql
+
+- name: Configure TimescaleDB servers
+  hosts: database
+  roles:
+    - timescaledb
+
+- name: Setup database replication
+  hosts: database
+  tasks:
+    - name: Configure PostgreSQL primary
+      include_role:
+        name: postgresql
+        tasks_from: configure_primary
+      when: 
+        - db_replication_enabled 
+        - inventory_hostname == groups['database'][0]
+
+    - name: Configure PostgreSQL replicas
+      include_role:
+        name: postgresql
+        tasks_from: configure_replica
+      when: 
+        - db_replication_enabled 
+        - inventory_hostname != groups['database'][0]
+
+    - name: Configure TimescaleDB primary
+      include_role:
+        name: timescaledb
+        tasks_from: configure_primary
+      when: 
+        - db_replication_enabled 
+        - inventory_hostname == groups['database'][2]
+
+    - name: Configure TimescaleDB replicas
+      include_role:
+        name: timescaledb
+        tasks_from: configure_replica
+      when: 
+        - db_replication_enabled 
+        - inventory_hostname == groups['database'][3]
+
+- name: Initialize Patient Monitoring databases
+  hosts: database
+  tasks:
+    - name: Create patient_db database
+      postgresql_db:
+        name: patient_db
+        owner: patient_app
+        encoding: UTF8
+      when: inventory_hostname == groups['database'][0]
+      become: yes
+      become_user: postgres
+
+    - name: Create vitals_db database in TimescaleDB
+      postgresql_db:
+        name: vitals_db
+        owner: vitals_app
+        encoding: UTF8
+      when: inventory_hostname == groups['database'][2]
+      become: yes
+      become_user: postgres
+
+    - name: Enable TimescaleDB extension
+      postgresql_ext:
+        name: timescaledb
+        db: vitals_db
+      when: inventory_hostname == groups['database'][2]
+      become: yes
+      become_user: postgres
+
+    - name: Create patient database tables
+      shell: |
+        PGPASSWORD="{{ postgresql_password }}" psql -U patient_app -h localhost -d patient_db -f /tmp/patient_schema.sql
+      args:
+        creates: /var/lib/postgresql/patient_schema_applied
+      when: inventory_hostname == groups['database'][0]
+
+    - name: Create vitals database tables and hypertables
+      shell: |
+        PGPASSWORD="{{ timescaledb_password }}" psql -U vitals_app -h localhost -d vitals_db -f /tmp/vitals_schema.sql
+      args:
+        creates: /var/lib/postgresql/vitals_schema_applied
+      when: inventory_hostname == groups['database'][2]

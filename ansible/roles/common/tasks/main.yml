@@ -1,0 +1,67 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install common packages
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - python3-pip
+      - ntp
+      - chrony
+      - vim
+      - htop
+      - iotop
+      - iftop
+      - tcpdump
+      - unzip
+      - jq
+    state: present
+
+- name: Configure timezone
+  timezone:
+    name: "{{ timezone }}"
+
+- name: Configure NTP
+  template:
+    src: chrony.conf.j2
+    dest: /etc/chrony/chrony.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart chrony
+
+- name: Set up system limits
+  template:
+    src: limits.conf.j2
+    dest: /etc/security/limits.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Configure sysctl for performance
+  template:
+    src: sysctl.conf.j2
+    dest: /etc/sysctl.d/99-patient-monitoring.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload sysctl
+
+- name: Setup backup scripts
+  include_tasks: setup_backups.yml
+  when: backup_enabled | default(false)
+
+- name: Configure system log rotation
+  template:
+    src: logrotate.conf.j2
+    dest: /etc/logrotate.d/patient-monitoring
+    owner: root
+    group: root
+    mode: '0644'

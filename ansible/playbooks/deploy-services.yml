@@ -1,0 +1,88 @@
+---
+- name: Prepare Kubernetes for Patient Monitoring System
+  hosts: bastion
+  tasks:
+    - name: Create namespace
+      k8s:
+        name: "{{ patient_monitoring_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Copy Kubernetes manifests to bastion
+      copy:
+        src: "../kubernetes/"
+        dest: "/home/{{ ansible_user }}/kubernetes/"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Apply Kubernetes config manifests
+      shell: |
+        kubectl apply -f /home/{{ ansible_user }}/kubernetes/01-config/
+      args:
+        chdir: "/home/{{ ansible_user }}"
+      
+    - name: Apply Kubernetes storage manifests
+      shell: |
+        kubectl apply -f /home/{{ ansible_user }}/kubernetes/02-storage/
+      args:
+        chdir: "/home/{{ ansible_user }}"
+      
+    - name: Apply Kubernetes database manifests
+      shell: |
+        kubectl apply -f /home/{{ ansible_user }}/kubernetes/03-databases/
+      args:
+        chdir: "/home/{{ ansible_user }}"
+      
+    - name: Apply RabbitMQ manifests
+      shell: |
+        kubectl apply -f /home/{{ ansible_user }}/kubernetes/04-rabbitmq/
+      args:
+        chdir: "/home/{{ ansible_user }}"
+      
+    - name: Wait for databases to be ready
+      shell: |
+        kubectl wait --for=condition=ready pod -l app=postgres --namespace={{ patient_monitoring_namespace }} --timeout=300s
+        kubectl wait --for=condition=ready pod -l app=timescaledb --namespace={{ patient_monitoring_namespace }} --timeout=300s
+      args:
+        chdir: "/home/{{ ansible_user }}"
+      
+    - name: Wait for RabbitMQ to be ready
+      shell: |
+        kubectl wait --for=condition=ready pod -l app=rabbitmq --namespace={{ patient_monitoring_namespace }} --timeout=300s
+      args:
+        chdir: "/home/{{ ansible_user }}"
+      
+    - name: Template service manifests with correct replicas
+      template:
+        src: "../roles/patient-monitoring/templates/{{ item }}.yaml.j2"
+        dest: "/home/{{ ansible_user }}/kubernetes/05-services/{{ item }}.yaml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+      with_items:
+        - patient-service
+        - vitals-ingestion-service
+        - vitals-processing-service
+        - alert-service
+        - notification-service
+        - api-gateway
+      
+    - name: Apply service manifests
+      shell: |
+        kubectl apply -f /home/{{ ansible_user }}/kubernetes/05-services/
+      args:
+        chdir: "/home/{{ ansible_user }}"
+      
+    - name: Apply ingress manifests
+      shell: |
+        kubectl apply -f /home/{{ ansible_user }}/kubernetes/06-ingress/
+      args:
+        chdir: "/home/{{ ansible_user }}"
+      
+    - name: Wait for all deployments to be ready
+      shell: |
+        kubectl wait --for=condition=available deployment --all --namespace={{ patient_monitoring_namespace }} --timeout=300s
+      args:
+        chdir: "/home/{{ ansible_user }}"

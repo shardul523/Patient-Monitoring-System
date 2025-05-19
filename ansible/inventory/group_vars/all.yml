@@ -1,0 +1,45 @@
+---
+# Common Variables
+timezone: UTC
+ntp_servers:
+  - 0.pool.ntp.org
+  - 1.pool.ntp.org
+dns_servers:
+  - 8.8.8.8
+  - 8.8.4.4
+
+# Docker Variables
+docker_version: "20.10"
+docker_edition: ce
+docker_users:
+  - "{{ ansible_user }}"
+
+# Kubernetes Variables
+kubernetes_version: "1.25.0"
+kubernetes_cni_version: "1.1.1"
+kubernetes_pod_network_cidr: "10.244.0.0/16"
+kubernetes_service_cidr: "10.96.0.0/12"
+kubernetes_apiserver_advertise_address: "{{ hostvars[groups['kubernetes_master'][0]]['ansible_host'] }}"
+
+# Patient Monitoring System Variables
+patient_monitoring_namespace: "patient-monitoring"
+patient_monitoring_version: "1.0.0"
+docker_registry: "registry.example.com"
+domain_name: "patient-monitoring.example.com"
+
+# Database Configurations
+postgresql_version: "14"
+timescaledb_version: "latest-pg14"
+postgresql_data_dir: "/var/lib/postgresql/data"
+timescaledb_data_dir: "/var/lib/timescaledb/data"
+
+# RabbitMQ Configuration
+rabbitmq_version: "3.9-management"
+rabbitmq_cluster_name: "patient-monitoring-rmq"
+rabbitmq_cluster_cookie: "7d16e0e6-6242-4aed-a0f8-4a5973a31377"
+
+# Monitoring Variables
+prometheus_version: "v2.37.0"
+grafana_version: "9.1.0"
+alertmanager_version: "v0.24.0"
+node_exporter_version: "v1.3.1"

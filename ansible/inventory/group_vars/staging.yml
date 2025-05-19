@@ -1,0 +1,39 @@
+---
+# Staging Environment Specific Variables
+k8s_node_memory: 16384
+k8s_node_cpus: 4
+
+# Database Configuration
+db_replication_enabled: false
+postgresql_max_connections: 200
+postgresql_shared_buffers: "4GB"
+postgresql_effective_cache_size: "12GB"
+timescaledb_max_connections: 150
+timescaledb_memory_limit: "8GB"
+
+# RabbitMQ Configuration
+rabbitmq_memory_limit: "4GB"
+rabbitmq_disk_free_limit: "5GB"
+rabbitmq_ha_mode: "exactly"
+rabbitmq_ha_params: 2
+
+# Service Replicas
+patient_service_replicas: 2
+vitals_ingestion_service_replicas: 2
+vitals_processing_service_replicas: 2
+alert_service_replicas: 2
+notification_service_replicas: 2
+api_gateway_replicas: 2
+
+# Storage Configuration
+storage_class: "staging-ssd"
+
+# Monitoring Configuration
+prometheus_retention_time: "7d"
+prometheus_scrape_interval: "30s"
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+# Backup Configuration
+backup_enabled: true
+backup_retention_days: 7
+backup_time: "02:00"

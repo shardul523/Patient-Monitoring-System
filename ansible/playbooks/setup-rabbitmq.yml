@@ -1,0 +1,83 @@
+---
+- name: Install and configure RabbitMQ
+  hosts: rabbitmq
+  roles:
+    - rabbitmq
+
+- name: Configure RabbitMQ cluster
+  hosts: rabbitmq
+  tasks:
+    - name: Set Erlang cookie
+      copy:
+        content: "{{ rabbitmq_cluster_cookie }}"
+        dest: /var/lib/rabbitmq/.erlang.cookie
+        owner: rabbitmq
+        group: rabbitmq
+        mode: '0400'
+      notify: restart rabbitmq
+
+    - name: Wait for RabbitMQ to start
+      wait_for:
+        port: 5672
+        delay: 10
+
+    - name: Join RabbitMQ cluster
+      command: rabbitmqctl join_cluster rabbit@{{ groups['rabbitmq'][0] | replace('-', '_') }}
+      args:
+        creates: /var/lib/rabbitmq/cluster_joined
+      when: inventory_hostname != groups['rabbitmq'][0]
+      ignore_errors: yes
+      register: cluster_join
+      
+    - name: Create marker file for cluster join
+      file:
+        path: /var/lib/rabbitmq/cluster_joined
+        state: touch
+        owner: rabbitmq
+        group: rabbitmq
+      when: inventory_hostname != groups['rabbitmq'][0] and cluster_join.changed
+
+- name: Configure RabbitMQ for Patient Monitoring System
+  hosts: rabbitmq
+  tasks:
+    - name: Create RabbitMQ vhost
+      rabbitmq_vhost:
+        name: "{{ patient_monitoring_namespace }}"
+        state: present
+      when: inventory_hostname == groups['rabbitmq'][0]
+
+    - name: Create RabbitMQ user
+      rabbitmq_user:
+        user: "{{ rabbitmq_user }}"
+        password: "{{ rabbitmq_password }}"
+        vhost: "{{ patient_monitoring_namespace }}"
+        configure_priv: ".*"
+        read_priv: ".*"
+        write_priv: ".*"
+        tags: administrator
+        state: present
+      when: inventory_hostname == groups['rabbitmq'][0]
+
+    - name: Create required queues
+      rabbitmq_queue:
+        name: "{{ item }}"
+        vhost: "{{ patient_monitoring_namespace }}"
+        durable: yes
+        state: present
+      with_items:
+        - vitals.raw
+        - vitals.processed
+        - alerts.new
+        - notifications.outbound
+      when: inventory_hostname == groups['rabbitmq'][0]
+
+    - name: Setup RabbitMQ HA policy
+      rabbitmq_policy:
+        name: ha-policy
+        vhost: "{{ patient_monitoring_namespace }}"
+        pattern: ".*"
+        tags:
+          ha-mode: "{{ rabbitmq_ha_mode }}"
+          ha-sync-mode: automatic
+        state: present
+      when: inventory_hostname == groups['rabbitmq'][0]

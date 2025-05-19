@@ -1,0 +1,62 @@
+---
+- name: Install monitoring stack
+  hosts: monitoring
+  roles:
+    - monitoring
+
+- name: Deploy Prometheus and Grafana to Kubernetes
+  hosts: bastion
+  tasks:
+    - name: Create monitoring namespace
+      k8s:
+        name: monitoring
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Add Prometheus Helm repo
+      command: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+      args:
+        creates: /home/{{ ansible_user }}/.helm/repository/prometheus-community
+
+    - name: Update Helm repos
+      command: helm repo update
+
+    - name: Deploy Prometheus stack
+      command: >
+        helm install prometheus prometheus-community/kube-prometheus-stack
+        --namespace monitoring
+        --set prometheus.prometheusSpec.retention={{ prometheus_retention_time }}
+        --set prometheus.prometheusSpec.scrapeInterval={{ prometheus_scrape_interval }}
+        --set grafana.adminPassword="{{ grafana_admin_password }}"
+      args:
+        creates: /home/{{ ansible_user }}/.helm/prometheus_deployed
+
+    - name: Create monitoring marker file
+      file:
+        path: /home/{{ ansible_user }}/.helm/prometheus_deployed
+        state: touch
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Copy Grafana dashboards
+      copy:
+        src: "../roles/monitoring/files/dashboards/"
+        dest: "/home/{{ ansible_user }}/dashboards/"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Import Grafana dashboards
+      shell: |
+        kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80 &
+        sleep 5
+        curl -s -XPOST -H "Content-Type: application/json" -H "Authorization: Basic {{ ('admin:' + grafana_admin_password) | b64encode }}" \
+          http://localhost:3000/api/dashboards/db -d @/home/{{ ansible_user }}/dashboards/{{ item }}
+        pkill -f "kubectl port-forward -n monitoring"
+      with_items:
+        - patient-monitoring-overview.json
+        - database-performance.json
+        - rabbitmq-performance.json
+        - service-health.json
