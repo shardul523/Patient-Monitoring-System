@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: monitoring
+data:
+  filebeat.yml: |
+    filebeat.inputs:
+    # Application logs from Kubernetes pods
+    - type: container
+      paths:
+        - /var/log/containers/*-${NODE_NAME}.log
+      processors:
+        - add_kubernetes_metadata:
+            host: ${NODE_NAME}
+            matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/"
+      exclude_files: ['filebeat-.*', 'metricbeat-.*']
+      tags: ["patient-monitoring"]
+    
+    # System logs
+    - type: log
+      enabled: true
+      paths:
+        - /var/log/syslog
+        - /var/log/auth.log
+      tags: ["system"]
+    
+    filebeat.autodiscover:
+      providers:
+        - type: kubernetes
+          node: ${NODE_NAME}
+          hints.enabled: true
+          templates:
+            - condition:
+                contains:
+                  kubernetes.namespace: patient-monitoring
+              config:
+                - type: container
+                  paths:
+                    - /var/log/containers/${data.kubernetes.container.id}.log
+                  exclude_lines: ['^(\s+)?DEBUG']
+    
+    processors:
+      - add_cloud_metadata: ~
+      - add_host_metadata: ~
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          matchers:
+          - logs_path:
+              logs_path: "/var/log/containers/"
+      - drop_event:
+          when:
+            or:
+              - contains:
+                  message: healthcheck
+              - equals:
+                  http.response.status_code: 200
+    
+    output.logstash:
+      hosts: ["logstash:5044"]
+      loadbalance: true
+      
+    logging.level: info
+    logging.to_files: true
+    logging.files:
+      path: /var/log/filebeat
+      name: filebeat
+      keepfiles: 7
+      permissions: 0644

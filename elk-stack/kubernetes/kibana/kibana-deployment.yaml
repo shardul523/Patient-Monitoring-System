@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:8.7.0
+        ports:
+        - containerPort: 5601
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: http://elasticsearch-api:9200
+        volumeMounts:
+        - name: kibana-config
+          mountPath: /usr/share/kibana/config/kibana.yml
+          subPath: kibana.yml
+        resources:
+          requests:
+            cpu: "0.3"
+            memory: "1Gi"
+          limits:
+            cpu: "0.5"
+            memory: "2Gi"
+        readinessProbe:
+          httpGet:
+            path: /app/kibana
+            port: 5601
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /app/kibana
+            port: 5601
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+      volumes:
+      - name: kibana-config
+        configMap:
+          name: kibana-config

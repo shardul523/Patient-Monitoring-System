@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-config
+  namespace: monitoring
+data:
+  elasticsearch.yml: |
+    cluster.name: patient-monitoring-cluster
+    network.host: 0.0.0.0
+    bootstrap.memory_lock: false
+    discovery.zen.minimum_master_nodes: 2
+    xpack.security.enabled: false
+    xpack.monitoring.collection.enabled: true

@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apm-server
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apm-server
+  template:
+    metadata:
+      labels:
+        app: apm-server
+    spec:
+      containers:
+      - name: apm-server
+        image: docker.elastic.co/apm/apm-server:8.7.0
+        ports:
+        - containerPort: 8200
+          name: http
+        volumeMounts:
+        - name: config
+          mountPath: /usr/share/apm-server/apm-server.yml
+          subPath: apm-server.yml
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "200Mi"
+          limits:
+            cpu: "300m"
+            memory: "500Mi"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8200
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8200
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: apm-server-config
+          defaultMode: 0600

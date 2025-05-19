@@ -1,0 +1,140 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: monitoring
+data:
+  logstash.yml: |
+    http.host: "0.0.0.0"
+    path.config: /usr/share/logstash/pipeline
+    xpack.monitoring.enabled: true
+    xpack.monitoring.elasticsearch.hosts: ["http://elasticsearch-api:9200"]
+  pipelines.yml: |
+    - pipeline.id: patient-monitoring
+      path.config: "/usr/share/logstash/pipeline/patient-monitoring.conf"
+    - pipeline.id: system-logs
+      path.config: "/usr/share/logstash/pipeline/system-logs.conf"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-pipeline
+  namespace: monitoring
+data:
+  patient-monitoring.conf: |
+    input {
+      beats {
+        port => 5044
+        tags => ["patient-monitoring"]
+      }
+    }
+
+    filter {
+      if "patient-monitoring" in [tags] {
+        json {
+          source => "message"
+        }
+        
+        # Extract service name from log path
+        grok {
+          match => { "log.file.path" => "%{DATA}/%{DATA}/%{GREEDYDATA:service_name}.log" }
+        }
+        
+        # Add service name as a field if not already present
+        if ![service.name] and [service_name] {
+          mutate {
+            add_field => { "[service][name]" => "%{service_name}" }
+          }
+        }
+        
+        # Parse timestamps
+        date {
+          match => [ "[timestamp]", "ISO8601" ]
+          target => "@timestamp"
+        }
+        
+        # Extract log level
+        if [level] {
+          mutate {
+            add_field => { "[log][level]" => "%{level}" }
+          }
+        }
+        
+        # Parse user information if present
+        if [user.id] {
+          mutate {
+            add_field => { "[user][id]" => "%{[user.id]}" }
+          }
+        }
+        
+        # Parse HTTP request information if present
+        if [http.request.method] {
+          mutate {
+            add_field => { 
+              "[http][request][method]" => "%{[http.request.method]}"
+              "[http][response][status_code]" => "%{[http.response.status_code]}"
+              "[url][path]" => "%{[http.request.path]}"
+            }
+          }
+        }
+        
+        # Enrich with error information
+        if [error] {
+          mutate {
+            add_field => { "[error][message]" => "%{[error.message]}" }
+          }
+          if [error.stack_trace] {
+            mutate {
+              add_field => { "[error][stack_trace]" => "%{[error.stack_trace]}" }
+            }
+          }
+        }
+      }
+    }
+
+    output {
+      if "patient-monitoring" in [tags] {
+        elasticsearch {
+          hosts => ["elasticsearch-api:9200"]
+          index => "patient-monitoring-%{+YYYY.MM.dd}"
+          ilm_enabled => true
+          ilm_rollover_alias => "patient-monitoring"
+          ilm_pattern => "{now/d}-000001"
+        }
+      }
+    }
+
+  system-logs.conf: |
+    input {
+      beats {
+        port => 5044
+        tags => ["system"]
+      }
+    }
+
+    filter {
+      if "system" in [tags] {
+        # Parse syslog format
+        grok {
+          match => { "message" => "%{SYSLOGTIMESTAMP:system.syslog.timestamp} %{SYSLOGHOST:system.syslog.hostname} %{DATA:system.syslog.program}(?:\[%{POSINT:system.syslog.pid}\])?: %{GREEDYDATA:system.syslog.message}" }
+        }
+        
+        # Parse timestamp
+        date {
+          match => [ "system.syslog.timestamp", "MMM  d HH:mm:ss", "MMM dd HH:mm:ss" ]
+        }
+      }
+    }
+
+    output {
+      if "system" in [tags] {
+        elasticsearch {
+          hosts => ["elasticsearch-api:9200"]
+          index => "system-logs-%{+YYYY.MM.dd}"
+          ilm_enabled => true
+          ilm_rollover_alias => "system-logs"
+          ilm_pattern => "{now/d}-000001"
+        }
+      }
+    }

@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apm-server-config
+  namespace: monitoring
+data:
+  apm-server.yml: |
+    apm-server:
+      host: "0.0.0.0:8200"
+      rum:
+        enabled: true
+      kibana:
+        enabled: true
+        host: "kibana:5601"
+    
+    queue:
+      mem:
+        events: 4096
+        flush.min_events: 1024
+        flush.timeout: 5s
+    
+    output.elasticsearch:
+      hosts: ["elasticsearch-api:9200"]
+      indices:
+        - index: "apm-%{[observer.version]}-transaction-%{+yyyy.MM.dd}"
+          when.contains:
+            processor.event: "transaction"
+        - index: "apm-%{[observer.version]}-span-%{+yyyy.MM.dd}"
+          when.contains:
+            processor.event: "span"
+        - index: "apm-%{[observer.version]}-error-%{+yyyy.MM.dd}"
+          when.contains:
+            processor.event: "error"
+        - index: "apm-%{[observer.version]}-metric-%{+yyyy.MM.dd}"
+          when.contains:
+            processor.event: "metric"
+    
+    logging:
+      level: info
+      to_files: true
+      files:
+        path: /var/log/apm-server
+        name: apm-server
+        keepfiles: 7
+        permissions: 0644
