@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  mongodb-patients:
+    image: mongo:latest
+    container_name: mongodb-patients
+    ports:
+      - "27017:27017"
+    volumes:
+      - patients-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: patients
+
+  mongodb-vitals:
+    image: mongo:latest
+    container_name: mongodb-vitals
+    ports:
+      - "27018:27017"
+    volumes:
+      - vitals-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: vitals
+
+  mongodb-alerts:
+    image: mongo:latest
+    container_name: mongodb-alerts
+    ports:
+      - "27019:27017"
+    volumes:
+      - alerts-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: alerts
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - patient-service
+      - vital-signs-service
+      - alert-service
+    environment:
+      NODE_ENV: production
+      PATIENT_SERVICE_URL: http://patient-service:8081
+      VITAL_SERVICE_URL: http://vital-signs-service:8082
+      ALERT_SERVICE_URL: http://alert-service:8083
+
+  patient-service:
+    build: ./services/patient-service
+    container_name: patient-service
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongodb-patients
+      - rabbitmq
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongodb-patients:27017/patients
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
+      PORT: 8081
+
+  vital-signs-service:
+    build: ./services/vital-signs-service
+    container_name: vital-signs-service
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mongodb-vitals
+      - rabbitmq
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongodb-vitals:27017/vitals
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
+      PORT: 8082
+
+  alert-service:
+    build: ./services/alert-service
+    container_name: alert-service
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mongodb-alerts
+      - rabbitmq
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongodb-alerts:27017/alerts
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
+      PORT: 8083
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+    environment:
+      REACT_APP_API_URL: http://localhost:8080
+
+volumes:
+  patients-data:
+  vitals-data:
+  alerts-data:
+  rabbitmq-data:

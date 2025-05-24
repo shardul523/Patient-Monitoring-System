@@ -1,7 +1,7 @@
 {
-  "name": "patient-service",
+  "name": "alert-service",
   "version": "1.0.0",
-  "description": "Patient management microservice",
+  "description": "Alert and notification microservice",
   "main": "index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -11,13 +11,13 @@
   "dependencies": {
     "express": "^4.18.2",
     "mongoose": "^7.0.3",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.0",
-    "joi": "^17.9.1",
     "amqplib": "^0.10.3",
+    "joi": "^17.9.1",
     "cors": "^2.8.5",
     "helmet": "^7.0.0",
-    "dotenv": "^16.0.3"
+    "dotenv": "^16.0.3",
+    "socket.io": "^4.6.1",
+    "jsonwebtoken": "^9.0.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.22",

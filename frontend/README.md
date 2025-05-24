@@ -1,1 +1,0 @@
-This is a README file for the frontend of the Patient Monitoring System
