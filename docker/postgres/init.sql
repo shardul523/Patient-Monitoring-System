@@ -1,0 +1,4 @@
+-- docker/postgres/init.sql
+-- CREATE USER shardul WITH PASSWORD 'test1234';
+-- CREATE DATABASE app2;
+-- GRANT ALL PRIVILEGES ON DATABASE app2 TO "shardul"@"localhost";

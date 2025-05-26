@@ -1,117 +1,137 @@
+# patient-management-system/docker-compose.yml
 version: '3.8'
 
 services:
-  mongodb-patients:
-    image: mongo:latest
-    container_name: mongodb-patients
+  postgres_db:
+    image: postgres:15
+    container_name: pms_postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "27017:27017"
+      - "${POSTGRES_PORT}:5432" # Exposes PostgreSQL to the host machine
     volumes:
-      - patients-data:/data/db
-    environment:
-      MONGO_INITDB_DATABASE: patients
+      - postgres_data:/var/lib/postgresql/data
+      # Optional: You can uncomment the next line to run an init script
+      # - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - pms_network
 
-  mongodb-vitals:
-    image: mongo:latest
-    container_name: mongodb-vitals
+  redis_cache:
+    image: redis:7-alpine
+    container_name: pms_redis_cache
+    restart: unless-stopped
     ports:
-      - "27018:27017"
+      - "${REDIS_PORT}:6379" # Exposes Redis to the host machine
     volumes:
-      - vitals-data:/data/db
-    environment:
-      MONGO_INITDB_DATABASE: vitals
+      - redis_data:/data
+    networks:
+      - pms_network
 
-  mongodb-alerts:
-    image: mongo:latest
-    container_name: mongodb-alerts
+  rabbitmq_broker:
+    image: rabbitmq:3.12-management-alpine
+    container_name: pms_rabbitmq_broker
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
     ports:
-      - "27019:27017"
+      - "${RABBITMQ_NODE_PORT}:5672"       # For application connection
+      - "${RABBITMQ_MANAGEMENT_PORT}:15672" # For Management UI
+    networks:
+      - pms_network
+
+  api_gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: pms_api_gateway
+    restart: unless-stopped
+    ports:
+      - "${API_GATEWAY_PORT}:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      AUTH_SERVICE_URL: "http://auth_service:3001/api/v1" # For API Gateway to call Auth Service
     volumes:
-      - alerts-data:/data/db
-    environment:
-      MONGO_INITDB_DATABASE: alerts
+      - ./services/api-gateway:/usr/src/app
+      - /usr/src/app/node_modules # Keeps container's node_modules separate
+    # ADD THIS LINE:
+    depends_on:
+      - postgres_db # API Gateway doesn't directly depend on DB, but good practice if it ever needs it
+      - redis_cache
+      - rabbitmq_broker
+      - auth_service # For service discovery if needed, or just ordering
+    networks:
+      - pms_network
+    command: npm run start:dev # Overrides Dockerfile CMD for development
 
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
+  
+  auth_service: # NEW SERVICE
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: pms_auth_service
+    restart: unless-stopped
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${AUTH_SERVICE_PORT}:3001" # Expose to host, using variable from .env
     environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: admin
+      NODE_ENV: development
+      PORT: 3001 # Port inside the container
+      DB_HOST: pms_postgres_db # Service name of PostgreSQL container
+      DB_PORT: ${POSTGRES_PORT} # Port exposed by postgres_db service internally in Docker network
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_DATABASE: ${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET} # Get from root .env or define directly
+      JWT_EXPIRATION_TIME: ${JWT_EXPIRATION_TIME:-3600s} # Default if not in root .env
     volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-
-  api-gateway:
-    build: ./services/api-gateway
-    container_name: api-gateway
-    ports:
-      - "8080:8080"
+      - ./services/auth-service:/usr/src/app
+      - /usr/src/app/node_modules
     depends_on:
-      - patient-service
-      - vital-signs-service
-      - alert-service
-    environment:
-      NODE_ENV: production
-      PATIENT_SERVICE_URL: http://patient-service:8081
-      VITAL_SERVICE_URL: http://vital-signs-service:8082
-      ALERT_SERVICE_URL: http://alert-service:8083
+      - postgres_db # Auth service needs the DB to be up
+    command: npm run start:dev # For hot-reloading in development
+    networks:
+      - pms_network
 
-  patient-service:
-    build: ./services/patient-service
-    container_name: patient-service
+    # Add to patient-management-system/docker-compose.yml
+  patient_service:
+    build:
+      context: ./services/patient-service
+      dockerfile: Dockerfile
+    container_name: pms_patient_service
+    restart: unless-stopped
     ports:
-      - "8081:8081"
-    depends_on:
-      - mongodb-patients
-      - rabbitmq
+      - "${PATIENT_SERVICE_PORT}:3002"
     environment:
-      NODE_ENV: production
-      MONGODB_URI: mongodb://mongodb-patients:27017/patients
-      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
-      PORT: 8081
+      NODE_ENV: development
+      PORT: 3002
+      DB_HOST: pms_postgres_db
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_DATABASE: ${POSTGRES_DB}
+      REDIS_HOST: pms_redis_cache
+      REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@pms_rabbitmq_broker:5672
+      JWT_SECRET: ${JWT_SECRET}
+    volumes:
+      - ./services/patient-service:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - postgres_db
+      - redis_cache
+      - rabbitmq_broker
+    command: npm run start:dev
+    networks:
+      - pms_network
 
-  vital-signs-service:
-    build: ./services/vital-signs-service
-    container_name: vital-signs-service
-    ports:
-      - "8082:8082"
-    depends_on:
-      - mongodb-vitals
-      - rabbitmq
-    environment:
-      NODE_ENV: production
-      MONGODB_URI: mongodb://mongodb-vitals:27017/vitals
-      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
-      PORT: 8082
-
-  alert-service:
-    build: ./services/alert-service
-    container_name: alert-service
-    ports:
-      - "8083:8083"
-    depends_on:
-      - mongodb-alerts
-      - rabbitmq
-    environment:
-      NODE_ENV: production
-      MONGODB_URI: mongodb://mongodb-alerts:27017/alerts
-      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
-      PORT: 8083
-
-  frontend:
-    build: ./frontend
-    container_name: frontend
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api-gateway
-    environment:
-      REACT_APP_API_URL: http://localhost:8080
+networks:
+  pms_network:
+    driver: bridge
 
 volumes:
-  patients-data:
-  vitals-data:
-  alerts-data:
-  rabbitmq-data:
+  postgres_data:
+  redis_data:
