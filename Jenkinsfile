@@ -375,7 +375,7 @@ pipeline {
                     steps { 
                         dir('services/api-gateway') { 
                             echo "Running Lint & Unit Tests for API Gateway..." 
-                            bat 'npm ci' 
+                            bat 'npm i' 
                             bat 'npm run lint' 
                             bat 'npm run test' 
                         } 
@@ -385,7 +385,7 @@ pipeline {
                     steps { 
                         dir('services/auth-service') { 
                             echo "Running Lint & Unit Tests for Auth Service..." 
-                            bat 'npm ci' 
+                            bat 'npm i' 
                             bat 'npm run lint' 
                             bat 'npm run test' 
                         } 
@@ -395,7 +395,7 @@ pipeline {
                     steps { 
                         dir('services/patient-service') { 
                             echo "Running Lint & Unit Tests for Patient Service..." 
-                            bat 'npm ci' 
+                            bat 'npm i' 
                             bat 'npm run lint' 
                             bat 'npm run test' 
                         } 
@@ -463,7 +463,7 @@ pipeline {
 
                         // Run e2e tests 
                         dir('services/patient-service') { 
-                            bat 'npm ci' 
+                            bat 'npm i' 
                             bat 'npm run test:e2e' 
                         } 
                     } catch(Exception e) { 
