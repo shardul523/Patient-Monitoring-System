@@ -359,8 +359,7 @@ pipeline {
                     // The Dockerfiles themselves don't copy .env files; env vars are passed
                     // via docker-compose.yml for container runtime.
                     // This root .env is primarily for `docker-compose up` variables.
-                    sh """
-                    #!/bin/bash
+                    bat """
                     echo "POSTGRES_USER=${env.POSTGRES_USER_JENKINS_USR ?: 'admin'}" > .env
                     echo "POSTGRES_PASSWORD=${env.POSTGRES_USER_JENKINS_PSW ?: 'supersecret'}" >> .env
                     echo "POSTGRES_DB=pms_db" >> .env
@@ -409,9 +408,9 @@ pipeline {
                     steps {
                         dir('services/api-gateway') {
                             echo "Running Lint & Unit Tests for API Gateway..."
-                            sh 'npm ci'
-                            sh 'npm run lint'
-                            sh 'npm run test'
+                            bat 'npm ci'
+                            bat 'npm run lint'
+                            bat 'npm run test'
                         }
                     }
                 }
@@ -419,9 +418,9 @@ pipeline {
                     steps {
                         dir('services/auth-service') {
                             echo "Running Lint & Unit Tests for Auth Service..."
-                            sh 'npm ci'
-                            sh 'npm run lint'
-                            sh 'npm run test'
+                            bat 'npm ci'
+                            bat 'npm run lint'
+                            bat 'npm run test'
                         }
                     }
                 }
@@ -429,9 +428,9 @@ pipeline {
                     steps {
                         dir('services/patient-service') {
                             echo "Running Lint & Unit Tests for Patient Service..."
-                            sh 'npm ci'
-                            sh 'npm run lint'
-                            sh 'npm run test'
+                            bat 'npm ci'
+                            bat 'npm run lint'
+                            bat 'npm run test'
                         }
                     }
                 }
@@ -463,13 +462,13 @@ pipeline {
 
 
                     echo "Building API Gateway image: ${env.FULL_API_GATEWAY_IMAGE_NAME}"
-                    sh "docker build -t ${env.FULL_API_GATEWAY_IMAGE_NAME} -f services/api-gateway/Dockerfile ./services/api-gateway"
+                    bat "docker build -t ${env.FULL_API_GATEWAY_IMAGE_NAME} -f services/api-gateway/Dockerfile ./services/api-gateway"
 
                     echo "Building Auth Service image: ${env.FULL_AUTH_SERVICE_IMAGE_NAME}"
-                    sh "docker build -t ${env.FULL_AUTH_SERVICE_IMAGE_NAME} -f services/auth-service/Dockerfile ./services/auth-service"
+                    bat "docker build -t ${env.FULL_AUTH_SERVICE_IMAGE_NAME} -f services/auth-service/Dockerfile ./services/auth-service"
 
                     echo "Building Patient Service image: ${env.FULL_PATIENT_SERVICE_IMAGE_NAME}"
-                    sh "docker build -t ${env.FULL_PATIENT_SERVICE_IMAGE_NAME} -f services/patient-service/Dockerfile ./services/patient-service"
+                    bat "docker build -t ${env.FULL_PATIENT_SERVICE_IMAGE_NAME} -f services/patient-service/Dockerfile ./services/patient-service"
                 }
             }
         }
@@ -493,8 +492,8 @@ pipeline {
                     
                     // Create a .env file specifically for the test execution context within patient-service
                     // This tells the NestJS app (started by tests) how to connect to Dockerized dependencies.
-                    sh """
-                    #!/bin/bash
+                    bat """
+                    
                     echo "Creating .env for patient-service e2e tests..."
                     echo "NODE_ENV=test" > .env
                     echo "PORT=${env.PATIENT_SERVICE_PORT_ENV}" >> .env
@@ -521,21 +520,21 @@ pipeline {
                         // Start dependencies using docker-compose from the project root
                         // The .env file in the root directory will be used by docker-compose.
                         echo "Starting dependencies for integration tests (PostgreSQL, Redis, RabbitMQ)..."
-                        sh "docker-compose up -d postgres_db redis_cache rabbitmq_broker"
+                        bat "docker-compose up -d postgres_db redis_cache rabbitmq_broker"
                         
                         // Wait for services to be ready (simple sleep, consider health checks)
-                        sh "sleep 15"
+                        bat "sleep 15"
 
                         // Run e2e tests from the patient-service directory
                         dir('services/patient-service') {
-                            sh 'npm ci' // Ensure dependencies are installed
-                            sh 'npm run test:e2e'
+                            bat 'npm ci' // Ensure dependencies are installed
+                            bat 'npm run test:e2e'
                         }
                     } catch(Exception e) {
                         echo "Testing failed"
                     } finally {
                         echo "Stopping and cleaning up integration test dependencies..."
-                        sh "docker-compose down -v" // -v removes volumes for a clean slate
+                        bat "docker-compose down -v" // -v removes volumes for a clean slate
                     }
                }
             }
@@ -566,15 +565,15 @@ pipeline {
                     //     echo "Skipping Docker Push: DOCKER_CREDENTIALS_ID not configured."
                     // }
 
-                    sh "echo ${DOCKER_HUB_CREDS_PSW} | docker login -u ${DOCKER_HUB_CREDS_USR} --password-stdin"
+                    bat "echo ${DOCKER_HUB_CREDS_PSW} | docker login -u ${DOCKER_HUB_CREDS_USR} --password-stdin"
                     echo "Pushing API Gateway image: ${env.FULL_API_GATEWAY_IMAGE_NAME}"
-                    sh "docker push ${env.FULL_API_GATEWAY_IMAGE_NAME}"
+                    bat "docker push ${env.FULL_API_GATEWAY_IMAGE_NAME}"
             
                     echo "Pushing Auth Service image: ${env.FULL_AUTH_SERVICE_IMAGE_NAME}"
-                    sh "docker push ${env.FULL_AUTH_SERVICE_IMAGE_NAME}"
+                    bat "docker push ${env.FULL_AUTH_SERVICE_IMAGE_NAME}"
             
                     echo "Pushing Patient Service image: ${env.FULL_PATIENT_SERVICE_IMAGE_NAME}"
-                    sh "docker push ${env.FULL_PATIENT_SERVICE_IMAGE_NAME}"
+                    bat "docker push ${env.FULL_PATIENT_SERVICE_IMAGE_NAME}"
                     echo "Skipping Docker Push: Registry credentials and URL not configured in this example."
                 }
             }
@@ -638,9 +637,9 @@ pipeline {
             // General cleanup
             script {
                 // Optionally remove locally built images if not pushed or needed
-                sh "docker rmi ${env.FULL_API_GATEWAY_IMAGE_NAME} || true"
-                sh "docker rmi ${env.FULL_AUTH_SERVICE_IMAGE_NAME} || true"
-                sh "docker rmi ${env.FULL_PATIENT_SERVICE_IMAGE_NAME} || true"
+                bat "docker rmi ${env.FULL_API_GATEWAY_IMAGE_NAME} || true"
+                bat "docker rmi ${env.FULL_AUTH_SERVICE_IMAGE_NAME} || true"
+                bat "docker rmi ${env.FULL_PATIENT_SERVICE_IMAGE_NAME} || true"
                 
                 // Ensure all docker-compose services are down if any were left running by mistake
                 // (Integration test stage should handle its own cleanup)
